@@ -2,8 +2,13 @@
 
 use rtnetlink::new_connection;
 
-use super::{iface::apply_iface_conf, wireguard::apply_wg_conf};
-use crate::{IfaceConf, IfaceType, NisporError};
+use super::{
+    super::query::get_ifaces_with_handle, iface::apply_iface_conf,
+    ip::change_ip_layer, wireguard::apply_wg_conf,
+};
+use crate::{
+    ErrorKind, IfaceConf, IfaceType, NetStateIfaceFilter, NisporError,
+};
 
 pub(crate) async fn apply_ifaces_conf(
     des_ifaces: &[IfaceConf],
@@ -28,5 +33,40 @@ pub(crate) async fn apply_ifaces_conf(
         }
     }
 
+    Ok(())
+}
+
+/// Apply only IP address changes without sending any link-level
+/// (RTM_SETLINK) netlink messages.  This is useful when the caller
+/// needs to add addresses to an interface managed by NetworkManager
+/// without triggering NM to re-activate the connection profile.
+pub(crate) async fn apply_ip_addrs_only(
+    des_ifaces: &[IfaceConf],
+) -> Result<(), NisporError> {
+    let (connection, handle, _) = new_connection()?;
+    tokio::spawn(connection);
+    for des_iface in des_ifaces {
+        let mut iface_filter = NetStateIfaceFilter::minimum();
+        iface_filter.iface_name = Some(des_iface.name.clone());
+        iface_filter.include_ip_address = true;
+        let cur_iface = if let Ok(mut ifaces) =
+            get_ifaces_with_handle(&handle, Some(&iface_filter)).await
+        {
+            ifaces.remove(&des_iface.name)
+        } else {
+            None
+        };
+        if let Some(cur_iface) = cur_iface {
+            change_ip_layer(&handle, des_iface, &cur_iface).await?;
+        } else {
+            return Err(NisporError::new(
+                ErrorKind::Bug,
+                format!(
+                    "Cannot restore IP addresses: interface {} not found",
+                    des_iface.name
+                ),
+            ));
+        }
+    }
     Ok(())
 }

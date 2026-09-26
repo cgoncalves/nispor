@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime;
 
 use super::{
-    conf::{apply_ifaces_conf, apply_routes_conf},
+    conf::{apply_ifaces_conf, apply_ip_addrs_only, apply_routes_conf},
     query::get_iface_name2index,
 };
 use crate::{IfaceConf, NisporError, RouteConf};
@@ -34,6 +34,18 @@ impl NetConf {
         {
             let cur_iface_name_2_index = get_iface_name2index().await?;
             apply_routes_conf(routes, &cur_iface_name_2_index).await?;
+        }
+        Ok(())
+    }
+
+    /// Apply only IP address configurations without any link-level
+    /// changes.  Unlike [`apply_async`](Self::apply_async), this does
+    /// **not** send `RTM_SETLINK` messages, so it will not trigger
+    /// NetworkManager to re-activate connection profiles on managed
+    /// interfaces.  Routes are ignored.
+    pub async fn apply_ip_addrs_only_async(&self) -> Result<(), NisporError> {
+        if let Some(ifaces) = &self.ifaces {
+            apply_ip_addrs_only(ifaces).await?;
         }
         Ok(())
     }

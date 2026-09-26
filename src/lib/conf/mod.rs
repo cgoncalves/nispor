@@ -35,5 +35,6 @@ pub use self::{
     wireguard::{WireguardConf, WireguardPeerConf},
 };
 pub(crate) use self::{
-    inter_ifaces::apply_ifaces_conf, route::apply_routes_conf,
+    inter_ifaces::{apply_ifaces_conf, apply_ip_addrs_only},
+    route::apply_routes_conf,
 };
